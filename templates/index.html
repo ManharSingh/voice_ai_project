@@ -1,21 +1,106 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Voice Clone AI</title>
-    <link rel="stylesheet" href="/static/style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Voice AI – Himani's Voice Clone</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
-<div class="main">
-    <div class="orb" id="orb"></div>
+<header>
+  <div class="brand">
+    <div class="brand-orb"></div>
+    <span class="brand-name">Voice<em>AI</em></span>
+  </div>
+  <div class="status-pill"><div class="dot"></div>flask running</div>
+</header>
 
-    <h1>Voice Clone AI</h1>
+<section class="hero">
+  <div class="hero-tag">✦ voice cloning · tinyllama · whisper</div>
+  <h1>Your AI.<br/><span class="grad">Your Voice.</span></h1>
+  <p class="hero-sub">Speak or type to your personal AI — it listens, thinks, and replies back in a cloned voice.</p>
+</section>
 
-    <button id="startBtn">🎙 Start</button>
-    <button id="stopBtn">⏹ Stop</button>
+<div class="mic-area">
+  <div class="mic-rings">
+    <div class="ring"></div><div class="ring"></div><div class="ring"></div>
+    <button class="mic-btn" id="micBtn" aria-label="Tap to record">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </button>
+  </div>
 
-    <p id="status">Click Start to Speak</p>
+  <div class="waveform" id="waveform">
+    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    <div class="bar"></div><div class="bar"></div>
+  </div>
+
+  <div class="thinking" id="thinking">
+    <div class="spinner"></div>
+    <p>thinking...</p>
+  </div>
+
+  <p class="mic-hint" id="micHint">tap to speak</p>
 </div>
+
+<div class="chat-wrap">
+  <div class="chat-head">
+    <span>// conversation</span>
+    <button class="btn-clear" id="clearBtn">clear</button>
+  </div>
+  <div class="chat-box" id="chatBox"></div>
+  <div class="type-row">
+    <input type="text" id="textInput" placeholder="Or type a message…" autocomplete="off"/>
+    <button id="sendBtn">Send →</button>
+  </div>
+</div>
+
+<div class="stack">
+  <div class="card">
+    <div class="card-icon" style="background:rgba(155,124,255,0.12)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9b7cff" stroke-width="2" stroke-linecap="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      </svg>
+    </div>
+    <h3>Whisper STT</h3>
+    <p>Speech ko text me convert karta hai.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-icon" style="background:rgba(90,240,160,0.08)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5af0a0" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+      </svg>
+    </div>
+    <h3>TinyLlama · Ollama</h3>
+    <p>Local AI reply generation with short responses.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-icon" style="background:rgba(232,121,249,0.1)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e879f9" stroke-width="2" stroke-linecap="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+      </svg>
+    </div>
+    <h3>Voice Cloning TTS</h3>
+    <p>AI ka answer cloned voice me suno.</p>
+  </div>
+</div>
+
+<footer>
+  <p>Gone or far away—still just a voice away.</p>
+</footer>
 
 <script src="/static/script.js"></script>
 </body>
