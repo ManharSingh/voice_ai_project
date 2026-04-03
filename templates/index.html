@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Voice AI – Himani's Voice Clone</title>
+  <title> soul Voice AI –  Voice Clone</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
@@ -14,12 +14,16 @@
     <div class="brand-orb"></div>
     <span class="brand-name">Voice<em>AI</em></span>
   </div>
-  <div class="status-pill"><div class="dot"></div>flask running</div>
+
+  <div class="top-right">
+    <div class="status-pill"><div class="dot"></div>logged in</div>
+    <a href="/logout" class="logout-btn">Logout</a>
+  </div>
 </header>
 
 <section class="hero">
   <div class="hero-tag">✦ voice cloning · tinyllama · whisper</div>
-  <h1>Your AI.<br/><span class="grad">Your Voice.</span></h1>
+  <h1>Welcome, {{ username }}<br/><span class="grad">Your AI. Your Voice.</span></h1>
   <p class="hero-sub">Speak or type to your personal AI — it listens, thinks, and replies back in a cloned voice.</p>
 </section>
 
@@ -71,7 +75,7 @@
       </svg>
     </div>
     <h3>Whisper STT</h3>
-    <p>Speech ko text me convert karta hai.</p>
+    <p>Speech ko text me convert karta hai accurately.</p>
   </div>
 
   <div class="card">
@@ -82,7 +86,7 @@
       </svg>
     </div>
     <h3>TinyLlama · Ollama</h3>
-    <p>Local AI reply generation with short responses.</p>
+    <p>Local AI response — fast aur private.</p>
   </div>
 
   <div class="card">
@@ -94,7 +98,7 @@
       </svg>
     </div>
     <h3>Voice Cloning TTS</h3>
-    <p>AI ka answer cloned voice me suno.</p>
+    <p>AI reply ko cloned voice me bolta hai.</p>
   </div>
 </div>
 
@@ -102,6 +106,6 @@
   <p>Gone or far away—still just a voice away.</p>
 </footer>
 
-<script src="/static/script.js"></script>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

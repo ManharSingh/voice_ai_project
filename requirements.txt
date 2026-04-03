@@ -1,0 +1,8 @@
+flask
+openai-whisper
+TTS
+requests
+werkzeug
+torch
+torchaudio
+ffmpeg-python
