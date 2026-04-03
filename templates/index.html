@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title> soul Voice AI –  Voice Clone</title>
+  <title>Voice AI – Voice Clone</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -59,7 +59,19 @@
     <span>// conversation</span>
     <button class="btn-clear" id="clearBtn">clear</button>
   </div>
-  <div class="chat-box" id="chatBox"></div>
+
+  <div class="chat-box" id="chatBox">
+    {% for item in conversations %}
+      <div class="msg {{ item.role }}">
+        <div class="avatar">{{ 'YOU' if item.role == 'user' else 'AI' }}</div>
+        <div class="msg-body">
+          <div class="msg-text">{{ item.message }}</div>
+          <div class="msg-time">{{ item.created_at }}</div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
   <div class="type-row">
     <input type="text" id="textInput" placeholder="Or type a message…" autocomplete="off"/>
     <button id="sendBtn">Send →</button>

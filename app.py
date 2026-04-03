@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory
 import whisper
 from TTS.api import TTS
 import uuid
@@ -10,21 +10,40 @@ import smtplib
 from email.mime.text import MIMEText
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = "your_super_secret_key_change_this"
+app.secret_key = os.getenv("SECRET_KEY", "change_this_immediately")
 
-# -------------------------------
-# Folders
-# -------------------------------
-os.makedirs("static/outputs", exist_ok=True)
-os.makedirs("temp", exist_ok=True)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=False
+)
 
-# -------------------------------
-# DATABASE
-# -------------------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "users.db")
+TEMP_DIR = os.path.join(BASE_DIR, "temp")
+PRIVATE_OUTPUT_DIR = os.path.join(BASE_DIR, "private_outputs")
+
+os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(PRIVATE_OUTPUT_DIR, exist_ok=True)
+
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "your_email@gmail.com")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "your_app_password")
+
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def init_db():
-    conn = sqlite3.connect("users.db")
+    conn = get_db()
     cur = conn.cursor()
 
     cur.execute("""
@@ -36,14 +55,24 @@ def init_db():
         )
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
+
 init_db()
 
-# -------------------------------
-# LOGIN REQUIRED DECORATOR
-# -------------------------------
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -52,20 +81,11 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# -------------------------------
-# EMAIL CONFIG (APNI EMAIL DAALNI HAI)
-# -------------------------------
-EMAIL_ADDRESS = "your_email@gmail.com"
-EMAIL_PASSWORD = "your_app_password"
-
-# IMPORTANT:
-# Gmail ka normal password mat daalna
-# Gmail App Password use karna
 
 def send_otp_email(to_email, otp):
     try:
         subject = "Your Voice AI OTP Code"
-        body = f"Your OTP for Voice AI login is: {otp}\n\nThis OTP is valid for a short time."
+        body = f"Your OTP for Voice AI login is: {otp}\n\nThis OTP is valid for 5 minutes."
 
         msg = MIMEText(body)
         msg["Subject"] = subject
@@ -82,9 +102,7 @@ def send_otp_email(to_email, otp):
         print("EMAIL ERROR:", e)
         return False
 
-# -------------------------------
-# LOAD MODELS (Startup pe load honge)
-# -------------------------------
+
 print("Loading Whisper model...")
 whisper_model = whisper.load_model("base")
 
@@ -94,41 +112,15 @@ tts = TTS(
     progress_bar=False
 )
 
-# -------------------------------
-# OLLAMA HELPER
-# -------------------------------
+
 def ask_ollama(user_text):
-    """
-    TinyLlama ko thoda better prompt deke answer nikalenge
-    """
     system_prompt = """
 You are a helpful AI assistant.
-
-Rules:
-1. Always answer the user's actual question directly.
-2. Keep answers natural and useful.
-3. Do NOT say things like "ask me about India only".
-4. If user asks factual question, answer it normally.
-5. Prefer short answers, but if needed use 1-3 sentences.
-6. If asked "who is X", return the direct name first.
-7. Never refuse normal general knowledge questions.
-8. Do not add unnecessary extra details unless useful.
-9. If user asks current affairs, answer as best as possible.
-10. If unsure, say "I'm not fully sure, but..." and still try to answer.
-
-Examples:
-User: Who is the Prime Minister of India?
-Assistant: Narendra Modi is the Prime Minister of India.
-
-User: Who is the current Prime Minister of France?
-Assistant: The Prime Minister of France is François Bayrou.
-
-User: What is Python?
-Assistant: Python is a popular programming language used for web development, AI, automation, and more.
-
-Now answer the user's question properly.
+Answer the user's actual question directly.
+Keep answers natural and useful.
+Do not add unnecessary extra details.
+If unsure, say "I'm not fully sure, but..." and still try to answer.
 """
-
     payload = {
         "model": "tinyllama",
         "prompt": f"{system_prompt}\n\nUser: {user_text}\nAssistant:",
@@ -148,33 +140,39 @@ Now answer the user's question properly.
 
     response.raise_for_status()
     data = response.json()
-
     ai_text = data.get("response", "").strip()
+    return ai_text if ai_text else "Sorry, I couldn't generate a proper response."
 
-    if not ai_text:
-        ai_text = "Sorry, I couldn't generate a proper response."
 
-    # extra cleanup
-    bad_lines = [
-        "Ask question like",
-        "Ask me the latest",
-        "I can only answer",
-        "only India",
-        "internet for exact accuracy"
-    ]
+def save_conversation(user_id, role, message):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO conversations (user_id, role, message, created_at) VALUES (?, ?, ?, ?)",
+        (user_id, role, message, datetime.utcnow().isoformat())
+    )
+    conn.commit()
+    conn.close()
 
-    for bad in bad_lines:
-        if bad.lower() in ai_text.lower():
-            ai_text = "Sorry, I couldn't answer that properly. Please try asking again."
 
-    return ai_text
+def get_user_conversations(user_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT role, message, created_at FROM conversations WHERE user_id = ? ORDER BY id ASC",
+        (user_id,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
-# -------------------------------
-# TTS HELPER
-# -------------------------------
-def generate_voice(ai_text):
+
+def generate_voice(ai_text, user_id):
+    user_folder = os.path.join(PRIVATE_OUTPUT_DIR, str(user_id))
+    os.makedirs(user_folder, exist_ok=True)
+
     output_filename = f"output_{uuid.uuid4().hex}.wav"
-    output_path = os.path.join("static", "outputs", output_filename)
+    output_path = os.path.join(user_folder, output_filename)
 
     tts.tts_to_file(
         text=ai_text,
@@ -183,11 +181,9 @@ def generate_voice(ai_text):
         file_path=output_path
     )
 
-    return f"/static/outputs/{output_filename}"
+    return output_filename
 
-# -------------------------------
-# AUTH ROUTES
-# -------------------------------
+
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
@@ -202,21 +198,23 @@ def signup():
         hashed_password = generate_password_hash(password)
 
         try:
-            conn = sqlite3.connect("users.db")
+            conn = get_db()
             cur = conn.cursor()
-            cur.execute("INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
-                        (username, email, hashed_password))
+            cur.execute(
+                "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
+                (username, email, hashed_password)
+            )
             conn.commit()
             conn.close()
 
             flash("Signup successful! Please login.", "success")
             return redirect(url_for("login"))
-
         except sqlite3.IntegrityError:
             flash("Email already exists.", "error")
             return redirect(url_for("signup"))
 
     return render_template("signup.html")
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -224,22 +222,24 @@ def login():
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "").strip()
 
-        conn = sqlite3.connect("users.db")
+        conn = get_db()
         cur = conn.cursor()
         cur.execute("SELECT id, username, password FROM users WHERE email = ?", (email,))
         user = cur.fetchone()
         conn.close()
 
-        if user and check_password_hash(user[2], password):
-            session["user_id"] = user[0]
-            session["username"] = user[1]
+        if user and check_password_hash(user["password"], password):
+            session.clear()
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
             session["email"] = email
             return redirect(url_for("index"))
-        else:
-            flash("Invalid email or password.", "error")
-            return redirect(url_for("login"))
+
+        flash("Invalid email or password.", "error")
+        return redirect(url_for("login"))
 
     return render_template("login.html")
+
 
 @app.route("/send_otp", methods=["POST"])
 def send_otp():
@@ -249,7 +249,7 @@ def send_otp():
         flash("Please enter your email first.", "error")
         return redirect(url_for("login"))
 
-    conn = sqlite3.connect("users.db")
+    conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT id, username FROM users WHERE email = ?", (email,))
     user = cur.fetchone()
@@ -262,8 +262,9 @@ def send_otp():
     otp = str(random.randint(100000, 999999))
     session["otp"] = otp
     session["otp_email"] = email
-    session["otp_user_id"] = user[0]
-    session["otp_username"] = user[1]
+    session["otp_user_id"] = user["id"]
+    session["otp_username"] = user["username"]
+    session["otp_expires_at"] = (datetime.utcnow() + timedelta(minutes=5)).isoformat()
 
     sent = send_otp_email(email, otp)
 
@@ -274,12 +275,23 @@ def send_otp():
 
     return redirect(url_for("login"))
 
+
 @app.route("/verify_otp", methods=["POST"])
 def verify_otp():
     entered_otp = request.form.get("otp", "").strip()
 
     if "otp" not in session:
         flash("Please request OTP first.", "error")
+        return redirect(url_for("login"))
+
+    expires_at = session.get("otp_expires_at")
+    if expires_at and datetime.utcnow() > datetime.fromisoformat(expires_at):
+        session.pop("otp", None)
+        session.pop("otp_email", None)
+        session.pop("otp_user_id", None)
+        session.pop("otp_username", None)
+        session.pop("otp_expires_at", None)
+        flash("OTP expired. Please request a new one.", "error")
         return redirect(url_for("login"))
 
     if entered_otp == session.get("otp"):
@@ -291,12 +303,14 @@ def verify_otp():
         session.pop("otp_email", None)
         session.pop("otp_user_id", None)
         session.pop("otp_username", None)
+        session.pop("otp_expires_at", None)
 
         flash("Logged in successfully with OTP.", "success")
         return redirect(url_for("index"))
-    else:
-        flash("Invalid OTP.", "error")
-        return redirect(url_for("login"))
+
+    flash("Invalid OTP.", "error")
+    return redirect(url_for("login"))
+
 
 @app.route("/logout")
 def logout():
@@ -304,101 +318,98 @@ def logout():
     flash("Logged out successfully.", "success")
     return redirect(url_for("login"))
 
-# -------------------------------
-# MAIN PAGE
-# -------------------------------
+
 @app.route("/")
 @login_required
 def index():
-    return render_template("index.html", username=session.get("username", "User"))
+    conversations = get_user_conversations(session["user_id"])
+    return render_template(
+        "index.html",
+        username=session.get("username", "User"),
+        conversations=conversations
+    )
 
-# -------------------------------
-# TEXT CHAT ROUTE
-# -------------------------------
+
 @app.route("/chat", methods=["POST"])
 @login_required
 def chat():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         user_text = data.get("message", "").strip()
 
         if not user_text:
             return jsonify({"response": "Please type something."}), 400
 
-        print("User typed:", user_text)
+        save_conversation(session["user_id"], "user", user_text)
 
         ai_text = ask_ollama(user_text)
-        audio_url = generate_voice(ai_text)
+        save_conversation(session["user_id"], "ai", ai_text)
+
+        audio_filename = generate_voice(ai_text, session["user_id"])
 
         return jsonify({
             "response": ai_text,
-            "audio_url": audio_url
+            "audio_url": url_for("get_private_audio", user_id=session["user_id"], filename=audio_filename)
         })
 
     except requests.exceptions.ConnectionError:
-        return jsonify({
-            "response": "Ollama is not running. Start it first."
-        }), 500
-
+        return jsonify({"response": "Ollama is not running. Start it first."}), 500
     except Exception as e:
         print("TEXT CHAT ERROR:", str(e))
-        return jsonify({
-            "response": "Backend error occurred",
-            "error": str(e)
-        }), 500
+        return jsonify({"response": "Backend error occurred", "error": str(e)}), 500
 
-# -------------------------------
-# VOICE ROUTE
-# -------------------------------
+
 @app.route("/process_audio", methods=["POST"])
 @login_required
 def process_audio():
     try:
-        print("Audio received")
-
         if "audio" not in request.files:
             return jsonify({"response": "No audio file received"}), 400
 
         audio_file = request.files["audio"]
-        input_path = os.path.join("temp", f"user_input_{uuid.uuid4().hex}.wav")
+        input_path = os.path.join(TEMP_DIR, f"user_input_{uuid.uuid4().hex}.wav")
         audio_file.save(input_path)
 
-        print("Transcribing...")
         result = whisper_model.transcribe(input_path)
         user_text = result["text"].strip()
 
-        print("User said:", user_text)
-
         if not user_text:
+            if os.path.exists(input_path):
+                os.remove(input_path)
             return jsonify({"response": "No speech detected"}), 400
 
-        ai_text = ask_ollama(user_text)
-        audio_url = generate_voice(ai_text)
+        save_conversation(session["user_id"], "user", user_text)
 
-        # cleanup
+        ai_text = ask_ollama(user_text)
+        save_conversation(session["user_id"], "ai", ai_text)
+
+        audio_filename = generate_voice(ai_text, session["user_id"])
+
         if os.path.exists(input_path):
             os.remove(input_path)
 
         return jsonify({
             "user_text": user_text,
             "response": ai_text,
-            "audio_url": audio_url
+            "audio_url": url_for("get_private_audio", user_id=session["user_id"], filename=audio_filename)
         })
 
     except requests.exceptions.ConnectionError:
-        return jsonify({
-            "response": "Ollama is not running. Start it first."
-        }), 500
-
+        return jsonify({"response": "Ollama is not running. Start it first."}), 500
     except Exception as e:
         print("ERROR OCCURRED:", str(e))
-        return jsonify({
-            "response": "Backend error occurred",
-            "error": str(e)
-        }), 500
+        return jsonify({"response": "Backend error occurred", "error": str(e)}), 500
 
-# -------------------------------
-# RUN
-# -------------------------------
+
+@app.route("/audio/<int:user_id>/<filename>")
+@login_required
+def get_private_audio(user_id, filename):
+    if session.get("user_id") != user_id:
+        abort(403)
+
+    user_folder = os.path.join(PRIVATE_OUTPUT_DIR, str(user_id))
+    return send_from_directory(user_folder, filename, as_attachment=False)
+
+
 if __name__ == "__main__":
     app.run(debug=True)
